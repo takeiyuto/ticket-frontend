@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>簡易 NFT ログイン</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.2.47/dist/vue.global.prod.js"
+        integrity="sha256-nD+4X/UNYqnXqWJINYbQ2ptd/0F72GB75bGgIdWtYsM=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@metamask/onboarding@1.0.1/dist/metamask-onboarding.bundle.js"
+        integrity="sha256-h3dgmf64rSDcgcbf8ad1nc/uH0EKdy5QH7P7n/91f7s=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"
+        integrity="sha256-jNzSqmjGhIDVGAygzWTxkMcGT97P9ZbqNAQuul/xgds=" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css"
+        integrity="sha256-wLz3iY/cO4e6vKZ4zRmo4+9XDpMcgKOvv/zEU3OMlRo=" crossorigin="anonymous">
+</head>
+
+<body id="app">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <span class="navbar-brand">Ticket NFT</span>
+            <div class="collapse navbar-collapse">
+                <span class="navbar-text">
+                    <a class="nav-link p-0" href="/index.html">ユーザー ページへ</a>
+                </span>
+            </div>
+            <div class="d-flex">
+                <button v-if="isWalletConnected" class="btn btn-danger" @click="disconnectWallet">MetaMask を切断</button>
+                <button v-else :disabled="isConnectingWallet" class="btn btn-success" @click="connectWallet">MetaMask に接続</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-5" style="max-width: 840px;">
+        <h1 class="text-center">簡易 NFT ログイン &ndash; 管理者ページ</h1>
+
+        <h2 class="h4 mt-5">1. 右上の [MetaMask に接続] をクリック</h2>
+
+        <table class="table mt-3">
+            <tbody>
+                <tr>
+                    <th scope="row">接続しているネットワーク</th>
+                    <td class="font-monospace">{{ isWalletConnected ? chainId : "" }}</td>
+                </tr>
+                <tr>
+                    <th scope="row">あなたのアドレス</th>
+                    <td class="font-monospace text-break">{{ account }}</td>
+                </tr>
+                <tr>
+                    <th scope="row">現在のブロック</th>
+                    <td>{{ isWalletConnected ? currentBlock : "" }}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2 class="h4 mt-5">2. 現在の価格設定</h2>
+
+        <table class="table mt-3">
+            <tbody>
+                <tr>
+                    <th scope="row">チケット NFT コントラクト</th>
+                    <td class="font-monospace text-break">{{ contractAddress }}</td>
+                </tr>
+                <tr>
+                    <th scope="row">コントラクトの所有者</th>
+                    <td class="font-monospace text-break">{{ contractOwner }}</td>
+                </tr>
+                <tr>
+                    <th scope="row">現在ブロックの価格 (ETH)</th>
+                    <td>{{ isWalletConnected ? currentPriceText : "" }}</td>
+                </tr>
+                <tr>
+                    <th scope="row">次ブロックの価格 (ETH)</th>
+                    <td>{{ isWalletConnected ? nextPriceText : "" }}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div v-if="isWalletConnected && !isOwner" class="alert alert-danger mt-3">あなたは管理者ではありません。</div>
+
+        <table class="table table-striped text-end mt-3">
+            <thead>
+                <tr>
+                    <th scope="col" class="px-5">ブロック番号</th>
+                    <th scope="col" class="px-5">設定価格 (ETH)</th>
+                </tr>
+            </thead>
+            <tbody v-if="priceRecords && priceRecords.length > 0">
+                <tr v-for="record in priceRecords">
+                    <th scope="row" class="px-5">{{ record.validTo }} まで</th>
+                    <td class="px-5">{{ record.price }}</td>
+                </tr>
+            </tbody>
+            <tbody v-else>
+                <tr>
+                    <td colspan="3" class="text-center">設定がありません。</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2 class="h4 mt-5">3. 価格を設定する</h2>
+
+        <form class="row mt-3" @submit.prevent="callSetPrice">
+            <div class="col-5 d-flex align-items-center">
+                <div class="input-group">
+                    <input v-model="newValidTo" type="number" class="form-control text-end" required
+                        @click="setValidTo=true">
+                    <span class="input-group-text">番ブロック</span>
+                </div>
+                <span class="px-2" style="word-break: keep-all;">まで</span>
+            </div>
+            <div class="col-4">
+                <div class="input-group">
+                    <div class="input-group-text">
+                        <input v-model="setPrice" class="form-check-input" type="radio" name="price" value="yes">
+                    </div>
+                    <input v-model="newPrice" type="number" class="form-control text-end" placeholder="価格" step="0.001"
+                        :required="setPrice === 'yes' ? true : null" @click="setPrice='yes'">
+                    <span class="input-group-text">ETH</span>
+                </div>
+                <div class="input-group">
+                    <div class="input-group-text border-white bg-transparent">
+                        <input id="noSale" v-model="setPrice" class="form-check-input" type="radio" name="price" value="no">
+                    </div>
+                    <label class="form-check-label d-flex align-items-center p-2" for="noSale">販売休止に</label>
+                </div>
+            </div>
+            <div class="col-3 d-flex align-items-center">
+                に
+                <button :disabled="!isWalletConnected" class="btn btn-primary mx-2" type="submit">設定する</button>
+            </div>
+        </form>
+
+        <div v-if="txErrorMessage" class="alert alert-danger mt-3">{{ txErrorMessage }}</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"
+        integrity="sha256-lSABj6XYH05NydBq+1dvkMu6uiCc/MbLYOFGRkf3iQs=" crossorigin="anonymous"></script>
+</body>
+
+</html>
